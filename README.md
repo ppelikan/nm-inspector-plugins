@@ -7,7 +7,8 @@ https://ppelikan.itch.io/normal-map-inspector
 
 ## Supported software
 
-Currently only the Aseprite app is supported.
+* [Aseprite](Aseprite)
+* [Krita](Krita)
 
 ## Contributing
 
