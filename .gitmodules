@@ -1,0 +1,3 @@
+[submodule "Krita/NM_Inspector_KritaPlugin/nm_inspector/websockets"]
+	path = Krita/NM_Inspector_KritaPlugin/nm_inspector/websockets
+	url = https://github.com/python-websockets/websockets.git
