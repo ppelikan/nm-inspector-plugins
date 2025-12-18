@@ -1,6 +1,6 @@
 --[[
     Normal Map Inspector add-on script for Aseprite 
-    Copyright (C) 2023 ppelikan
+    Copyright (C) 2025 ppelikan
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -41,8 +41,44 @@ local layer_diff
 local layer_norm
 local layer_spec
 local groups_supported
+local tilemap_cache = {}
 
 -- ==========================================================================
+
+-- render a tilemap layer
+local function renderTilemap(layer, ce)
+    local tile_width = layer.tileset.grid.tileSize.width
+    local tile_height = layer.tileset.grid.tileSize.height
+    local img_width = ce.image.width * tile_width
+    local img_height = ce.image.height * tile_height
+
+    -- create or reuse cached image buffer
+    local cache_key = layer.name
+    local tilemap_img = tilemap_cache[cache_key]
+
+    if tilemap_img == nil or tilemap_img.width ~= img_width or tilemap_img.height ~= img_height then
+        tilemap_img = Image(img_width, img_height)
+        tilemap_cache[cache_key] = tilemap_img
+    end
+
+    tilemap_img:clear()
+
+    -- render tiles
+    for y = 0, ce.image.height - 1 do
+        for x = 0, ce.image.width - 1 do
+            local tile_index = ce.image:getPixel(x, y)
+            if tile_index > 0 then
+                local tile_img = layer.tileset:getTile(tile_index)
+                if tile_img then
+                    tilemap_img:drawImage(tile_img,
+                        Point(x * tile_width, y * tile_height))
+                end
+            end
+        end
+    end
+
+    return tilemap_img
+end
 
 -- send given layer image data with associated id through websocket
 local function sendLayer(layer, id)
@@ -53,24 +89,38 @@ local function sendLayer(layer, id)
 
     local ce
     local ok = false
-    if layer.layers ~= nil then
 
+    if layer.layers ~= nil then
         -- layer is group of layers
         for _,l in ipairs(layer.layers) do
             ce = l:cel(app.activeFrame.frameNumber)
             if ce ~= nil then
-                bufimg:drawImage(ce.image, ce.position, l.opacity, l.blendMode)
+                if l.isTilemap then
+                    local tilemap_img = renderTilemap(l, ce)
+                    bufimg:drawImage(tilemap_img, ce.position, l.opacity, l.blendMode)
+                else
+                    bufimg:drawImage(ce.image, ce.position, l.opacity, l.blendMode)
+                end
                 ok = true
             end
         end
+    elseif layer.isTilemap then
+        -- layer is a tilemap layer
+        ce = layer:cel(app.activeFrame.frameNumber)
+        if ce ~= nil then
+            local tilemap_img = renderTilemap(layer, ce)
+            bufimg:drawImage(tilemap_img, ce.position, layer.opacity, layer.blendMode)
+            ok = true
+        end
     else
-        -- layer is single layer
+        -- layer is single regular layer
         ce = layer:cel(app.activeFrame.frameNumber)
         if ce ~= nil then
             bufimg:drawImage(ce.image, ce.position)
             ok = true
         end
     end
+
     if ok == true then
         ws:sendBinary(string.pack("<I4I4I4", id, bufimg.width, bufimg.height))
         -- Aseprite bug forces the user to use the RGB mode
@@ -128,6 +178,7 @@ local function finish()
     config_dialog = nil
     spr = nil
     ws = nil
+    tilemap_cache = {}
 end
 
 -- callback for websocket client
@@ -226,7 +277,7 @@ if spr == nil then
 end
 
 if spr.colorMode ~= ColorMode.RGB then
-    app.alert{title="Error!", text="Wrong Color Mode detected! Please switch to 'RGB Color'."}
+    app.alert{title="Error!", text="Wrong Color Mode detected! Please switch to 'RGB Color' (Sprite -> Color Mode)"}
     return
 end
 
@@ -273,7 +324,7 @@ finish_fnc = finish
 config_dialog = Dialog{title="NM Inspector"}
 if groups_supported == false and found_groups == true then
     config_dialog:label{ label="Warning!", text="Layer groups are unsupported." }
-    config_dialog:label{ label="", text="Please update Aseprite to version 1.3" }
+    config_dialog:label{ label="", text="Please update Aseprite" }
     config_dialog:separator{}
 end
 config_dialog:combobox{ id="diff_layer",
